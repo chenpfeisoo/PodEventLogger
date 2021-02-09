@@ -30,7 +30,15 @@ const (
 	SuccessfulCreate  = "SuccessfulCreate"
 	ScalingReplicaSet = "ScalingReplicaSet"
 )
-
+type  PullImageInfo struct {
+	EventName string `json:"event_name"`
+	ImageName  string `json:"image_name"`
+	PullimageTime float64 `json:"pullimage_time"`
+}
+func (c *PullImageInfo) ToJsonString() string {
+	b, _ := json.Marshal(c)
+	return string(b)
+}
 func homeDir() string {
 	if h := os.Getenv("HOME"); h != "" {
 		return h
@@ -81,7 +89,12 @@ func pullImagetime(events v1.EventList) {
 		for i, j := range endmap {
 			if i == k {
 				//找到同一个depoly
-				klog.Infof("EventName\t%v\tpullimageTime\t%v", i, j.Sub(v).Seconds())
+				pt:=PullImageInfo{
+					EventName: strings.Split(i, ":")[0],
+					ImageName: strings.Split(i, ":")[1],
+					PullimageTime: j.Sub(v).Seconds(),
+				}
+				klog.Info(pt.ToJsonString())
 			}
 		}
 	}
@@ -92,7 +105,7 @@ func pullingStartTime(events v1.EventList) map[string]time.Time {
 	for _, event := range events.Items {
 		if strings.Contains(event.Reason, Pulling) {
 			return map[string]time.Time{
-				eventName(event.Name): event.CreationTimestamp.Time,
+				eventName(event.Name)+":"+strings.Trim(imageName(event.Message), "\""): event.CreationTimestamp.Time,
 			}
 		}
 	}
@@ -104,7 +117,7 @@ func pulledFinTime(events v1.EventList) map[string]time.Time {
 	for _, event := range events.Items {
 		if strings.Contains(event.Reason, Pulled) {
 			return map[string]time.Time{
-				eventName(event.Name): event.LastTimestamp.Time,
+				eventName(event.Name)+":"+strings.Trim(imageName(event.Message), "\""): event.LastTimestamp.Time,
 			}
 		}
 	}
@@ -113,11 +126,14 @@ func pulledFinTime(events v1.EventList) map[string]time.Time {
 
 //处理一下event.Name
 func eventName(str string) string {
-	v := strings.Split(str, "-")
-	//return v[0]+"-"+v[1]
+	v := strings.Split(str, ".")
 	return v[0]
 }
 
+func imageName(str string) string {
+	v := strings.Split(str, " ")
+	return v[len(v)-1]
+}
 func runContainerTime(events v1.EventList) {
 	startmap := createContainerTime(events)
 	endmap := scalingReplicaSet(events)
@@ -125,7 +141,7 @@ func runContainerTime(events v1.EventList) {
 		for i, j := range startmap {
 			if strings.Contains(k, i) {
 				//找到同一个depoly
-				klog.Infof("EventName\t%v\trunContainerTime\t%v", i, j.Sub(v).Seconds())
+				klog.Infof("EventName\t%v\trunContainerTime\t%vs", i, j.Sub(v).Seconds())
 			}
 		}
 	}
